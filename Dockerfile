@@ -1,24 +1,22 @@
-FROM yanana/phusion-nginx
+FROM nginx:1.9-alpine
 
-MAINTAINER Shun Yanaura <metroplexity@gmail.com>
+RUN apk update && apk add curl && rm -rf /var/cache/apk
 
-RUN apt-get update \
-  && apt-get -y install unzip \
-  && rm -r /var/lib/apt/lists/* /var/cache/apt/*
-
-ENV DL_URL https://releases.hashicorp.com/consul-template/0.15.0/consul-template_0.15.0_linux_amd64.zip
-RUN curl -sSL $DL_URL > /tmp/consul-template.zip \
+RUN curl -sSLo /tmp/consul-template.zip https://releases.hashicorp.com/consul-template/0.16.0/consul-template_0.16.0_linux_amd64.zip \
   && cd /usr/local/bin \
   && unzip /tmp/consul-template.zip \
   && rm /tmp/consul-template.zip
 
-ADD nginx.service /etc/service/nginx/run
-ADD consul-template.service /etc/service/consul-template/run
-RUN find /etc/service -type f -name 'run' -a ! -executable -exec chmod +x {} \;
+RUN curl -sSLo /tini https://github.com/krallin/tini/releases/download/v0.10.0/tini-static \
+  && chmod a+x /tini
 
-RUN rm -v /etc/nginx/conf.d/*
-ADD nginx.conf /etc/nginx/nginx.conf
+RUN mkdir -p /etc/consul-templates && touch /etc/consul-templates/app.conf.ctmpl
 
-VOLUME /etc/consul-templates
+ENTRYPOINT ["/tini", "-v", "-g", "--"]
 
-CMD ["my_init"]
+CMD ["consul-template", \
+    "--log-level=debug", \
+    "--consul=consul:8500", \
+    "--exec", "nginx -g 'daemon off;'", \
+    "--exec-reload-signal=SIGHUP", \
+    "--template=/etc/consul-templates/app.conf.ctmpl:/etc/nginx/conf.d/app.conf"]
